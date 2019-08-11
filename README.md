@@ -1,7 +1,7 @@
 # js3d
 3d render engine for js
 
-preview : https:www.fl3dbrowser.com/js3d/
+preview : https://www.fl3dbrowser.com/js3d/
 
 - 一直以来，都想试着从0开始写一个3D渲染引擎，奈何dx/opengl/webgl都非常完善，没有找到合适的理由。
 - 在开发微信小程序的时候，发现并没有webgl可以用，于是，决定写一个js版的。
