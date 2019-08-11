@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JS3D</title>
+</head>
+<body>
+    <div> fps : <font id="fps"></font> (<font id="minSpf"></font>-<font id="maxSpf"></font>)ms</div>
+    <canvas id='canvas' width=300 height=200 onkeydown="onkeydown(event)"></canvas>
+    <div> eyePos : <font id="eyePos"></font></div>
+    <div> planePos : <font id="planePos"></font></div>
+    <div> draw : <font id="drawRef"></font></div>
+    <div>按键说明</div>
+    <div>W/S/A/D/I/K : 上/下/左/右/前/后</div>
+    <div>P(按住) : 控制摄像机</div>
+    <div>O(按住) : 慢速移动</div>
+    <div>L : 发射子弹</div>
+</body>
+<script type="text/javascript" src="js3d.js"></script>
+<script>
+    var Colors = {
+        red:js3d.color.colorHexRGB2UnitRGBA(0xf25346),
+        white:js3d.color.colorHexRGB2UnitRGBA(0xd8d0d1),
+        brown:js3d.color.colorHexRGB2UnitRGBA(0x59332e),
+        pink:js3d.color.colorHexRGB2UnitRGBA(0xF5986E),
+        brownDark:js3d.color.colorHexRGB2UnitRGBA(0x23190f),
+        blue:js3d.color.colorHexRGB2UnitRGBA(0x68c3c0),
+    };
+    var ref = {
+        trangle:0,
+        line:0,
+        linePixel:0,
+        clear(){
+            this.trangle = 0
+            this.line = 0
+            this.linePixel = 0
+        }
+    }
+    var deviceHtmlCanvas = js3d.device
+    var engine3d = js3d.engine
+    var canvas = document.getElementById('canvas');
+    var context = canvas.getContext('2d');
+    //context.scale(1.5, 1.5);
+    deviceHtmlCanvas.context = context
+    engine3d.Init(300,200,deviceHtmlCanvas)
+    var root = {
+        children: []
+    }
+    var earth = {
+        children: [],
+        rotation: [0,0,0],
+        pos:[0,-600,0],
+    }
+    var sky = {
+        children: [],
+        rotation: [0,0,0],
+        pos:[0,-600,0],
+    }
+    var sea = {
+        mesh: [
+            {
+                v:js3d.vertex.cylinderGeometry(600,800,40),
+                c:Colors.blue,
+            }
+        ],
+        rotation:[Math.PI/2,0,0],
+    }
+    earth.children.push(sea)
+    var plane = {
+        mesh:[
+            {
+                v:js3d.vertex.boxGeometry(0,0,0,60,50,50),
+                c:Colors.red,
+            },
+            {
+                v:js3d.vertex.boxGeometry(40,0,0,20,50,50),
+                c:Colors.white
+            },
+            {
+                v:js3d.vertex.boxGeometry(-35,25,0,15,20,5),
+                c:Colors.red
+            },
+            {
+                v:js3d.vertex.boxGeometry(0,0,0,40,8,150),
+                c:Colors.red
+            },
+            {
+                v:js3d.vertex.boxGeometry(50,0,0,20,10,10),
+                c:Colors.brown
+            },
+            {
+                v:js3d.vertex.boxGeometry(58,0,0,1,100,20),
+                c:Colors.brownDark,
+                data:{
+                    radius:0,
+                    beforeRender() {
+                        this.radius += 0.3
+                        engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixX(this.radius))
+                    }
+                }
+            },
+        ],
+        pos: [0,90,0],
+        scale: [0.25,0.25,0.25],
+        hide:true,
+        cliderR:50,
+    }
+    plane.data = {
+        state:0,
+        stateRuntime:0,
+        hidden:true,
+        control:false,
+        shootCD:0,
+        shoot:function(){
+            if (this.data.shootCD>0) return
+            if (!this.data.control) return
+            this.data.shootCD=300
+            var speeds = [
+                js3d.vector3.x(js3d.vector3.normalize([4,2,0]),300/1000),
+                js3d.vector3.x(js3d.vector3.normalize([4,1,0]),300/1000),
+                js3d.vector3.x(js3d.vector3.normalize([1,0,0]),300/1000),
+                js3d.vector3.x(js3d.vector3.normalize([4,-1,0]),300/1000),
+                js3d.vector3.x(js3d.vector3.normalize([4,-2,0]),300/1000),
+            ]
+            for (var i=0; i<speeds.length; ++i) {
+                var b =
+                {
+                    mesh:[
+                        {
+                            v:js3d.vertex.boxGeometry(0,0,0,10,10,10),
+                            c:Colors.pink,
+                            data:{
+                                radius:0,
+                                beforeRender() {
+                                    this.radius += 0.07
+                                    engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixX(this.radius))
+                                    engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixY(this.radius))
+                                    engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixZ(this.radius))
+                                }
+                            }
+                        },
+                    ],
+                    pos: js3d.vector3.add(this.pos,[20,0,0]),
+                    scale: [0.25,0.25,0.25],
+                    cliderR: 11/2,
+                }
+                b.data = {
+                    speed:speeds[i],
+                    tick:function(deltaMS) {
+                        this.pos[0] += this.data.speed[0] * deltaMS
+                        this.pos[1] += this.data.speed[1] * deltaMS
+                        this.pos[2] += this.data.speed[2] * deltaMS
+                    }.bind(b)
+                }
+                bullets.children.push(b)
+            }
+        }.bind(plane),
+        die:function(){
+            createDieEffect(this.pos)
+            this.data.state=0
+            this.data.tick(0)
+        }.bind(plane),
+        tick:function(deltaMS) {
+            if (this.data.shootCD>0)
+                this.data.shootCD-=deltaMS
+            if (this.data.state==0) {//start
+                this.pos[0] = -200
+                this.pos[1] = 90
+                ++this.data.state
+                this.data.stateRuntime = 0
+                this.data.hidden = true
+                this.hide = true
+                this.data.control = false
+                this.scale = [0.5,0.5,0.5]
+            } else if (this.data.state==1) {
+                var maxRuntime = 1000
+                this.data.stateRuntime += deltaMS
+                if (this.data.stateRuntime>maxRuntime) {
+                    this.data.stateRuntime=maxRuntime
+                }
+                if (this.data.stateRuntime==maxRuntime) {
+                    this.data.stateRuntime = 0
+                    ++this.data.state
+                }
+            } else if (this.data.state==2) {//born 2000ms
+                var maxRuntime = 800
+                var flushT = 200
+                this.data.stateRuntime += deltaMS
+                if (this.data.stateRuntime>maxRuntime) {
+                    this.data.stateRuntime=maxRuntime
+                }
+                var rate = this.data.stateRuntime/maxRuntime
+                this.pos[0] = -200+rate*200
+                var s = 0.5-rate*0.25
+                this.scale[0] = s
+                this.scale[1] = s
+                this.scale[2] = s
+                this.data.control = false
+                if (this.data.stateRuntime==maxRuntime) {
+                    this.data.stateRuntime = 0
+                    ++this.data.state
+                    this.hide=false
+                    this.data.control = true
+                }
+                else if (this.data.stateRuntime%flushT<flushT/2)
+                    this.hide=false
+                else
+                    this.hide=true
+            } else if (this.data.state==3) {//control and flash 2000
+                var maxRuntime = 1400
+                var flushT = 200
+                this.data.stateRuntime += deltaMS
+                if (this.data.stateRuntime>maxRuntime) {
+                    this.data.stateRuntime=maxRuntime
+                }
+                var rate = this.data.stateRuntime/maxRuntime
+                if (this.data.stateRuntime==maxRuntime) {
+                    this.data.stateRuntime = 0
+                    ++this.data.state
+                    this.hide=false
+                    this.data.hidden=false
+                }
+                else if (this.data.stateRuntime%flushT<flushT/2)
+                    this.hide=false
+                else
+                    this.hide=true
+            } else if (this.data.state==4) {
+                //正常操作
+            }
+        }.bind(plane)
+    }
+    var bullets = {
+        children:[]
+    }
+    var enemys = {
+        children: []
+    }
+    var dieEffects = {
+        children: []
+    }
+    root.children.push(earth)
+    root.children.push(sky)
+    root.children.push(plane)
+    root.children.push(bullets)
+    root.children.push(enemys)
+    root.children.push(dieEffects)
+    //添加云
+    this.nClouds = 20;
+    var stepAngle = Math.PI*2 / this.nClouds;
+    for(var i=0; i<this.nClouds; i++){
+        var a = stepAngle*i
+        var h = 750 + Math.random()*200;
+        var s = 1+Math.random()*2;
+        var cloudGroup = {
+            children:[],
+            rotationE:[0,0,a+Math.PI/2],
+            pos:[Math.cos(a)*h,Math.sin(a)*h,400+Math.random()*400],
+            scale:[s,s,s]
+        }
+        var nBlocs = 3+Math.floor(Math.random()*3);
+        for (var j=0; j<nBlocs; j++ ){
+            var s = 0.1 + Math.random() * 0.9
+            var cloud = {
+                mesh:[
+                    {
+                        v:js3d.vertex.boxGeometry(0,0,0,20,20,20),
+                        c:Colors.white,
+                    }
+                ],
+                pos:[j*15,Math.random()*10,Math.random()*10],
+                rotationE:[Math.random()*Math.PI*2,Math.random()*Math.PI*2,0],
+                scale:[s,s,s]
+            }
+            cloudGroup.children.push(cloud)
+        }
+        sky.children.push(cloudGroup)
+    }
+    function renderNode(node,m) {
+        if (node.data && node.data.tick) {
+            node.data.tick(16)
+        }
+        if (node.hide) return
+        engine3d.ClearMatrix()
+        if (node.scale)
+            engine3d.PushMatrix(js3d.matrix16.buildScaleMatrix(node.scale[0],node.scale[1],node.scale[2]))
+        if (node.rotation) {
+            if (node.rotation[0]!=0)
+                engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixX(node.rotation[0]))
+            if (node.rotation[1]!=0)
+                engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixY(node.rotation[1]))
+            if (node.rotation[2]!=0)
+                engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixZ(node.rotation[2]))
+        }
+        if (node.pos)
+            engine3d.PushMatrix(js3d.matrix16.buildTransformMatrix(node.pos[0],node.pos[1],node.pos[2]))
+        if (node.rotationE) {
+            if (node.rotationE[0]!=0)
+                engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixX(node.rotationE[0]))
+            if (node.rotationE[1]!=0)
+                engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixY(node.rotationE[1]))
+            if (node.rotationE[2]!=0)
+                engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixZ(node.rotationE[2]))
+        }
+        engine3d.PushMatrix(m)
+        var originMatrix = engine3d.GetLastMatrix()
+        if (node.mesh) {
+            for (var iM=0; iM<node.mesh.length; ++iM) {
+                var m = node.mesh[iM]
+                engine3d.ClearMatrix()
+                if (m.data && m.data.beforeRender)
+                    m.data.beforeRender()
+                engine3d.PushMatrix(originMatrix)
+                for (var iF=0; iF<m.v.f3.length; ++iF) {
+                    var f = m.v.f3[iF]
+                    var vs = []
+                    for (var i=0; i<3; ++i) {
+                        var v = m.v.v[f[i]]
+                        vs.push([v[0],v[1],v[2],m.c[0],m.c[1],m.c[2],m.c[3]])
+                    }
+                    engine3d.DrawTriangles(vs)
+                }
+            }
+        }
+        if (node.children) {
+            for (var i=0; i<node.children.length; ++i)
+                renderNode(node.children[i],originMatrix)
+        }
+    }
+    var moveRange = {
+        plane:[
+            [-120,120],
+            [20,185],
+            [0,0]
+        ]
+    }
+    function controlMove(axis,delta) {
+        var controlPlane = !keyState.plane
+        if (controlPlane) {
+            if (!plane.data.control) return
+            plane.pos[axis] += delta
+            if (plane.pos[axis]<moveRange.plane[axis][0])
+                plane.pos[axis]=moveRange.plane[axis][0]
+            else if (plane.pos[axis]>moveRange.plane[axis][1])
+                plane.pos[axis]=moveRange.plane[axis][1]
+        } else {
+            engine3d.eye[axis] += delta
+            engine3d.lookat[axis] += delta
+        }
+    }
+    function planeShoot() {
+        plane.data.shoot()
+    }
+    function createDieEffect(pos) {
+        for (var i=0; i<10; ++i) {
+            var b =
+            {
+                mesh:[
+                    {
+                        v:js3d.vertex.boxGeometry(0,0,0,10,10,10),
+                        c:Colors.red,
+                    },
+                ],
+                pos: js3d.vector3.clone(pos),
+                scale: [0.25,0.25,0.25],
+            }
+            var speed = js3d.vector3.x(js3d.vector3.normalize([Math.random()*20-10,Math.random()*20-10,0]),400/1000)
+            b.data = {
+                speed:speed,
+                tick:function(deltaMS) {
+                    this.pos[0] += this.data.speed[0] * deltaMS
+                    this.pos[1] += this.data.speed[1] * deltaMS
+                    this.pos[2] += this.data.speed[2] * deltaMS
+                }.bind(b)
+            }
+            dieEffects.children.push(b)
+        }
+    }
+    function createEnemy() {
+        var e =
+        {
+            mesh:[
+                {
+                    v:js3d.vertex.boxGeometry(0,0,0,80,80,80),
+                    c:Colors.red,
+                    data:{
+                        radius:0,
+                        rotateSpeed:Math.random()*0.05+0.01,
+                        beforeRender() {
+                            this.radius += this.rotateSpeed
+                            engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixX(this.radius))
+                            engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixY(this.radius))
+                            engine3d.PushMatrix(js3d.matrix16.buildRotateMatrixZ(this.radius))
+                        }
+                    }
+                },
+            ],
+            pos: [150,20 + Math.random() * (185-20),plane.pos[2]],
+            scale: [0.25,0.25,0.25],
+            cliderR: 85/2,
+        }
+        enemys.children.push(e)
+    }
+    function checkClider(a,b) {
+        var dis = js3d.vector3.disAB(a.pos,b.pos)
+        cliderDis = a.cliderR*a.scale[0] + b.cliderR*b.scale[0]
+        if (dis<=cliderDis) return true
+        return false
+    }
+    function tickClider() {
+        for (var i=0; i<bullets.children.length; ) {
+            var hit = false
+            var b = bullets.children[i]
+            for (var j=0; j<enemys.children.length; ++j) {
+                var e = enemys.children[j]
+                if (checkClider(b,e)) {
+                    hit = true
+                    createDieEffect(e.pos)
+                    enemys.children.splice(j,1)
+                    break
+                }
+            }
+            if (hit)
+                bullets.children.splice(i,1)
+            else
+                ++i
+        }
+        if (!plane.data.hidden) {
+            for (var j=0; j<enemys.children.length; ++j) {
+                var e = enemys.children[j]
+                if (checkClider(plane,e)) {
+                    plane.data.die()
+                    break
+                }
+            }
+        }
+    }
+    function tickDieEffects() {
+        var n = []
+        for (var i=0; i<dieEffects.children.length; ++i) {
+            var b = dieEffects.children[i]
+            if (b.pos[0]<200 && b.pos[0]>-200 && b.pos[1]<200 && b.pos[1]>-200)
+                n.push(b)
+            else
+                console.log('remove die effect')
+        }
+        dieEffects.children = n
+    }
+    function tickBullets() {
+        var n = []
+        for (var i=0; i<bullets.children.length; ++i) {
+            var b = bullets.children[i]
+            if (b.pos[0]<200)
+                n.push(b)
+            else
+                console.log('remove bullets')
+        }
+        bullets.children = n
+    }
+    function tickEnemys() {
+        var n = []
+        for (var i=0; i<enemys.children.length; ++i) {
+            var b = enemys.children[i]
+            b.pos[0] -= 2
+            if (b.pos[0]>-200)
+                n.push(b)
+        }
+        enemys.children = n
+    }
+    function tick() {
+        tickDieEffects()
+        tickBullets()
+        tickEnemys()
+        tickClider()
+    }
+    function render() {
+        earth.rotation[2] += 0.005
+        sky.rotation[2] += 0.01
+        tick()
+        var delta = 3
+        if (keyState.slow) delta = 1
+        var axis = null
+        if (keyState.up) controlMove(1,delta)
+        if (keyState.down) controlMove(1,-delta)
+        if (keyState.left) controlMove(0,-delta)
+        if (keyState.right) controlMove(0,delta)
+        if (keyState.top) controlMove(2,delta)
+        if (keyState.bottom) controlMove(2,-delta)
+        engine3d.Clean()
+        engine3d.BeforeRender()
+        ref.clear()
+        renderNode(root,null)
+        engine3d.Flush()
+    }
+    var keyState = {
+        up:false,
+        down:false,
+        left:false,
+        right:false,
+        top:false,
+        bottom:false,
+        slow:false,
+        plane:false,
+    }
+    var keyCodeBind = {
+        up:87,
+        down:83,
+        left:65,
+        right:68,
+        top:73,
+        bottom:75,
+        slow:79,
+        plane:80,
+    }
+    document.onkeydown = function(event){
+        for (var k in keyCodeBind) {
+            if (keyCodeBind[k]==event.keyCode) {
+                keyState[k] = true
+                return
+            }
+        }
+        if (event.keyCode==76) {
+            planeShoot()
+        }
+　　};
+    document.onkeyup = function(event){
+        for (var k in keyCodeBind) {
+            if (keyCodeBind[k]==event.keyCode) {
+                keyState[k] = false
+                return
+            }
+        }
+　　};
+    domfps = document.getElementById('fps')
+    domMinSpf = document.getElementById('minSpf')
+    domMaxSpf = document.getElementById('maxSpf')
+    domEyePos = document.getElementById('eyePos')
+    domDrawRef = document.getElementById('drawRef')
+    domPlanePos = document.getElementById('planePos')
+    var maxFps = null
+    var minFps = null
+    var fps = 0
+    var lastFlushFps = 0
+    window.setInterval(function() {
+        var now = Date.now();
+        var t = now;
+        render()
+        ++fps
+        now = Date.now();
+        var t = now-t
+        if (maxFps==null || maxFps<t)
+            maxFps = t
+        if (minFps==null || minFps>t)
+            minFps = t
+        if (now-lastFlushFps>1000) {
+            domfps.innerHTML = fps
+            domMinSpf.innerHTML = minFps
+            domMaxSpf.innerHTML = maxFps
+            maxFps = null
+            minFps = null
+            fps = 0
+            lastFlushFps = now
+            domDrawRef.innerHTML = ref.trangle+','+ref.line+','+ref.linePixel
+        }
+        domEyePos.innerHTML = engine3d.eye.join(',') + ' -> ' + engine3d.lookat.join(',')
+        domPlanePos.innerHTML = plane.pos.join(',')
+        if (Math.random()<0.01) {
+            createEnemy()
+        }
+    },16);
+</script>
+</html>
